@@ -134,7 +134,11 @@ void loop() {
   makeEventId(reading.eventId);
   digitalWrite(GREEN_LED, noiseState ? LOW : HIGH);
   digitalWrite(RED_LED, noiseState ? HIGH : LOW);
-  digitalWrite(BUZZER_PIN, (noiseState == BUZZER_ACTIVE_HIGH) ? HIGH : LOW);
+  if (noiseState) {
+    digitalWrite(BUZZER_PIN, BUZZER_ACTIVE_HIGH ? HIGH : LOW); // Beep when noisy (Red LED)
+  } else {
+    digitalWrite(BUZZER_PIN, BUZZER_ACTIVE_HIGH ? LOW : HIGH); // Silent when quiet (Green LED)
+  }
   Serial.printf("score=%d noisy=%s\n", reading.score, noiseState ? "true" : "false");
   if (readings && xQueueSend(readings, &reading, 0) != pdTRUE) {
     Reading discarded;
