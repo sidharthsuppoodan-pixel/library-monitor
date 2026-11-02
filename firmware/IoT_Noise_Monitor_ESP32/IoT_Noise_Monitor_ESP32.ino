@@ -115,35 +115,74 @@ void setup() {
   Serial.println("Noise monitor ready. Scores are relative analog values, not decibels.");
 }
 
+constexpr uint32_t WINDOW_MS = 50;       // Fast continuous 50ms audio sampling
+constexpr uint32_t ALARM_HOLD_MS = 1500;  // Hold red LED & buzzer for 1.5s on detected sound
+
+uint32_t lastUploadTime = 0;
+uint32_t lastAlarmTrigger = 0;
+int peakScoreInWindow = 0;
+bool soundDetectedInWindow = false;
+
 void loop() {
-  if (millis() - lastSample < SAMPLE_INTERVAL_MS) { delay(5); return; }
-  lastSample = millis();
+  // 1. Fast continuous sampling of the audio waveform (100% duty cycle, no dead time)
   int minimum = 4095, maximum = 0;
-  for (int i = 0; i < SAMPLE_COUNT; i++) {
+  uint32_t windowStart = millis();
+  while (millis() - windowStart < WINDOW_MS) {
     int value = analogRead(SOUND_PIN);
     if (value < minimum) minimum = value;
     if (value > maximum) maximum = value;
-    delayMicroseconds(100);
+    delayMicroseconds(80);
   }
-  Reading reading{};
-  reading.score = maximum - minimum;
-  if (reading.score >= NOISE_THRESHOLD) noiseState = true;
-  else if (reading.score < NOISE_THRESHOLD - HYSTERESIS) noiseState = false;
-  reading.noisy = noiseState;
-  reading.sampledAt = millis();
-  makeEventId(reading.eventId);
-  digitalWrite(GREEN_LED, noiseState ? LOW : HIGH);
-  digitalWrite(RED_LED, noiseState ? HIGH : LOW);
-  if (noiseState) {
-    digitalWrite(BUZZER_PIN, BUZZER_ACTIVE_HIGH ? HIGH : LOW); // Beep when noisy (Red LED)
+
+  int currentScore = maximum - minimum;
+
+  // Track the highest peak score for the cloud update
+  if (currentScore > peakScoreInWindow) {
+    peakScoreInWindow = currentScore;
+  }
+
+  // 2. Instant sound detection trigger: Red light & Buzzer immediately turn ON
+  if (currentScore >= NOISE_THRESHOLD) {
+    lastAlarmTrigger = millis();
+    soundDetectedInWindow = true;
+    Serial.printf("[SOUND DETECTED!] Score: %d >= Threshold: %d -> RED LIGHT & BEEP!\n",
+                  currentScore, NOISE_THRESHOLD);
+  }
+
+  // 3. Alarm active state: remains active for ALARM_HOLD_MS after noise
+  bool isAlarm = (lastAlarmTrigger > 0 && (millis() - lastAlarmTrigger < ALARM_HOLD_MS));
+
+  // 4. Real-time LED and Buzzer hardware control
+  digitalWrite(GREEN_LED, isAlarm ? LOW : HIGH);
+  digitalWrite(RED_LED, isAlarm ? HIGH : LOW);
+  if (isAlarm) {
+    digitalWrite(BUZZER_PIN, BUZZER_ACTIVE_HIGH ? HIGH : LOW); // BEEP on noise
   } else {
-    digitalWrite(BUZZER_PIN, BUZZER_ACTIVE_HIGH ? LOW : HIGH); // Silent when quiet (Green LED)
+    digitalWrite(BUZZER_PIN, BUZZER_ACTIVE_HIGH ? LOW : HIGH); // SILENT when quiet
   }
-  Serial.printf("score=%d noisy=%s\n", reading.score, noiseState ? "true" : "false");
-  if (readings && xQueueSend(readings, &reading, 0) != pdTRUE) {
-    Reading discarded;
-    xQueueReceive(readings, &discarded, 0); // Prefer fresh data when the RAM queue fills.
-    xQueueSend(readings, &reading, 0);
-    Serial.println("Offline queue full; oldest queued reading discarded.");
+
+  // 5. Periodic cloud reporting every SAMPLE_INTERVAL_MS (2 seconds)
+  if (millis() - lastUploadTime >= SAMPLE_INTERVAL_MS) {
+    lastUploadTime = millis();
+
+    Reading reading{};
+    reading.score = peakScoreInWindow;
+    reading.noisy = soundDetectedInWindow;
+    reading.sampledAt = millis();
+    makeEventId(reading.eventId);
+
+    Serial.printf("Status -> Peak: %d (threshold: %d), State: %s\n",
+                  peakScoreInWindow, NOISE_THRESHOLD, soundDetectedInWindow ? "NOISY" : "QUIET");
+
+    if (readings && xQueueSend(readings, &reading, 0) != pdTRUE) {
+      Reading discarded;
+      xQueueReceive(readings, &discarded, 0); // Discard oldest if queue fills
+      xQueueSend(readings, &reading, 0);
+    }
+
+    // Reset aggregation for the next 2-second cycle
+    peakScoreInWindow = 0;
+    soundDetectedInWindow = isAlarm;
   }
 }
+
