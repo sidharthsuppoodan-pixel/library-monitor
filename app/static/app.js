@@ -47,15 +47,24 @@ function renderSummary(data) {
   const latest=data.latest, stale=!latest || (new Date(data.server_time)-new Date(latest.created_at))/1000>data.stale_after_seconds;
   connection(!latest?'Waiting for device':stale?'Device offline':'Device online',!stale);
   $('device-name').textContent=data.device_id;
-  $('score').textContent=latest?fmt.format(latest.noise_score):'—';
-  $('score-bar').setAttribute('width',latest?latest.noise_score/4095*100:0);
+  const recentNoisy=currentRows.find(r=>r.noisy&&(new Date(data.server_time)-new Date(r.created_at))/1000<25);
+  if(recentNoisy){
+    const ago=Math.max(0,Math.round((new Date(data.server_time)-new Date(recentNoisy.created_at))/1000));
+    $('score').textContent=fmt.format(recentNoisy.noise_score);
+    $('score-bar').setAttribute('width',(recentNoisy.noise_score/4095)*100);
+    $('status').textContent=`High noise detected (${ago}s ago)`;
+    $('status').className='status noisy';
+  }else{
+    $('score').textContent=latest?fmt.format(latest.noise_score):'—';
+    $('score-bar').setAttribute('width',latest?(latest.noise_score/4095)*100:0);
+    $('status').textContent=!latest?'Waiting for device':stale?'Device offline':'Normal noise level';
+    $('status').className=`status ${stale?'neutral':'normal'}`;
+  }
   $('average').textContent=data.average===null?'—':fmt.format(data.average);
   $('peak').textContent=data.peak===null?'—':fmt.format(data.peak);
-  $('noisy-count').textContent=data.count?fmt.format(data.noisy_count):'—';
+  $('noisy-count').textContent=data.count?fmt.format(data.noisy_count):'0';
   $('reading-count').textContent=`${fmt.format(data.count)} readings in this period`;
   $('received').textContent=latest?`Received ${date(latest.created_at)}`:'No readings received yet';
-  $('status').textContent=!latest?'Waiting for device':stale?'Device offline':latest.noisy?'High noise detected':'Normal noise level';
-  $('status').className=`status ${stale?'neutral':latest.noisy?'noisy':'normal'}`;
   $('updated').textContent=`Updated ${new Date(data.server_time).toLocaleTimeString()}`;
   chart(data);
 }
@@ -68,7 +77,8 @@ function renderRows() {
   }
   currentRows.forEach(reading=>{
     const row=document.createElement('tr');
-    [date(reading.created_at),reading.device_id,fmt.format(reading.noise_score),reading.noisy?'Noisy':'Normal',`#${reading.id}`].forEach((value,index)=>{
+    if(reading.noisy) row.className='noisy-row';
+    [date(reading.created_at),reading.device_id,fmt.format(reading.noise_score),reading.noisy?'⚠️ High noise':'Normal',`#${reading.id}`].forEach((value,index)=>{
       const cell=document.createElement('td');
       if(index===3){const badge=document.createElement('span');badge.className=`status ${reading.noisy?'noisy':'normal'}`;badge.textContent=value;cell.append(badge);}else cell.textContent=value;
       row.append(cell);
