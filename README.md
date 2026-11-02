@@ -4,8 +4,6 @@ Monitor relative sound levels in a library using an ESP32 and KY-038 sensor, wit
 
 ESP32 + KY-038 → HTTPS → FastAPI → PostgreSQL → library dashboard.
 
-Prepared for Edson / Sidharth. The project folder is `Edson/Sidharth/iot`.
-
 **Scores are relative analog peak-to-peak values (0–4095), not calibrated decibels.** This project is not a calibrated sound-level instrument. The original sketch mentioned in the handover was not attached as a usable file; the included sketch is a new implementation of that specification.
 
 ## Start here

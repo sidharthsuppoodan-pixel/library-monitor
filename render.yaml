@@ -1,20 +1,18 @@
-# Paid, always-on resources. Review Render's cost estimate before applying.
+# Free tier configuration for Render deployment
 services:
   - type: web
-    name: sidharth-noise-monitor
+    name: library-noise-monitor
     runtime: docker
-    plan: 0.5c-512mb
+    plan: free
     region: singapore
-    numInstances: 1
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    preDeployCommand: alembic upgrade head
     healthCheckPath: /health
     autoDeployTrigger: 'off'
     envVars:
       - key: DATABASE_URL
         fromDatabase:
-          name: sidharth-noise-db
+          name: library-noise-db
           property: connectionString
       - key: DEVICE_API_KEY
         generateValue: true
@@ -24,29 +22,12 @@ services:
         value: esp32-01
       - key: RETENTION_DAYS
         value: '30'
-  - type: cron
-    name: sidharth-noise-retention
-    runtime: docker
-    plan: 0.5c-512mb
-    region: singapore
-    schedule: '17 2 * * *'
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
-    dockerCommand: python -m scripts.retention
-    autoDeployTrigger: 'off'
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: sidharth-noise-db
-          property: connectionString
-      - key: RETENTION_DAYS
-        value: '30'
+
 databases:
-  - name: sidharth-noise-db
+  - name: library-noise-db
     databaseName: noise_monitor
     user: noise
-    plan: 0.1c-256mb
-    diskSizeGB: 5
+    plan: free
     region: singapore
-    postgresMajorVersion: '17'
-    ipAllowList: []
+    postgresMajorVersion: '16'
+

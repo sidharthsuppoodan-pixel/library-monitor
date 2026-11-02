@@ -8,37 +8,31 @@ Use your web browser for account setup. Use **Mac Terminal** only for the comman
 2. Create a private GitHub repository named `noise`. Leave its README, license and `.gitignore` unchecked because this project already contains files.
 3. Create a [Render account](https://dashboard.render.com/register). Connect GitHub when Render asks and grant access only to this repository.
 
-The included Blueprint provisions a paid, always-on web service, paid PostgreSQL database and a daily cron job. Review Render's current estimate in the deployment screen before confirming. Account creation, login and payment details are yours to enter. The free tier is not the production configuration included here.
+The included Blueprint provisions a Free Tier web service (hosting both frontend and backend) and a Free PostgreSQL database.
 
 ## 2. Upload the project to GitHub
 
-Open Mac Terminal in the `iot` folder, then run:
+Open Mac Terminal in the project folder, then run:
 
 ```sh
-git init
 git add .
-git status --short
-```
-
-Check that `.env`, `config.h`, backup files and passwords are **not** listed. The supplied `.gitignore` excludes them. Then:
-
-```sh
-git commit -m "Add IoT noise monitor with Docker and Render deployment"
+git commit -m "Configure Library Monitor for Render deployment"
 git branch -M main
-git remote add origin https://github.com/Edson-Edwin/noise.git
+git remote add origin https://github.com/<your-username>/library-monitor.git
 git push -u origin main
 ```
 
-The repository for this project is [Edson-Edwin/noise](https://github.com/Edson-Edwin/noise). If you already have this repository, skip the repository creation and initial upload steps. Use GitHub's supported browser/credential-manager sign-in if prompted, not your account password as a Git password. Keep `Dockerfile` and `render.yaml` at the repository root. If you upload through the GitHub website instead, include the hidden `.gitignore` and `.dockerignore` files too.
+Keep `Dockerfile` and `render.yaml` at the repository root.
 
 ## 3. Create the Blueprint
 
-1. In Render choose **New → Blueprint**.
-2. Select the repository and branch `main`.
+1. In Render choose **New → Blueprint** (or click the Blueprint deploy link).
+2. Select your repository and branch `main`.
 3. Use `render.yaml` as the Blueprint path.
-4. Review the three resources and estimated cost. The configured region is Singapore; change both service and database regions before first deployment if needed.
-5. Create/apply the Blueprint.
-6. Wait for the database and web service to become healthy. The web service builds the Dockerfile, runs `alembic upgrade head` as its pre-deploy command, then starts the API. The cron job removes expired rows daily.
+4. Review the two resources (Web Service + PostgreSQL Database, both on Free tier).
+5. Click **Apply Blueprint**.
+6. Wait for the database and web service to become healthy. The web service builds the Dockerfile, runs `alembic upgrade head` on container startup, then starts the API and serves the dashboard.
+
 
 The database's external access list is empty; the app uses Render's internal connection string. Render terminates HTTPS for the public web service. Python runs one worker and listens on Render's `PORT`. No reverse proxy container or Docker Compose is needed on Render.
 
