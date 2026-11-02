@@ -38,7 +38,7 @@ async function refresh(first=false) {
     $('status').textContent='Connection lost';$('status').className='status neutral';
   } finally {
     busy=false;$('refresh').disabled=false;
-    if(token && !paused && run===generation) timer=setTimeout(()=>refresh(),5000);
+    if(token && !paused && run===generation) timer=setTimeout(()=>refresh(),1000);
   }
 }
 $('refresh').addEventListener('click',()=>refresh());
@@ -126,7 +126,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&token&&!p
 $('pause').addEventListener('click',()=>{
   paused=!paused; $('pause').setAttribute('aria-pressed',String(paused));
   $('pause').textContent=paused?'Resume':'Pause';
-  $('poll-label').textContent=paused?'Updates paused':'Updates every 5 seconds';
+  $('poll-label').textContent=paused?'Updates paused':'Live (Updates every 1s)';
   $('pause').closest('.poll-state').classList.toggle('paused',paused);
   clearTimeout(timer); if(!paused&&token)refresh();
 });

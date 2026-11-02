@@ -72,6 +72,7 @@ void uploadTask(void *) {
       HTTPClient http;
       http.setConnectTimeout(5000);
       http.setTimeout(5000);
+      http.setReuse(true);
       int status = -1;
       if (http.begin(client, API_URL)) {
         http.addHeader("Content-Type", "application/json");
@@ -82,7 +83,7 @@ void uploadTask(void *) {
         status = http.POST(reinterpret_cast<uint8_t *>(body), strlen(body));
       }
       http.end();
-      Serial.printf("Upload HTTP status: %d\n", status); // Never log credentials.
+      Serial.printf("Upload HTTP status: %d (score=%d, noisy=%s)\n", status, reading.score, reading.noisy ? "true" : "false");
       if (status == 200 || status == 201) { backoffMs = 2000; break; }
       // Schema/key errors need operator action. Avoid hammering the server.
       if (status >= 400 && status < 500 && status != 408 && status != 429) {
@@ -120,6 +121,7 @@ constexpr uint32_t ALARM_HOLD_MS = 1500;  // Hold red LED & buzzer for 1.5s on d
 
 uint32_t lastUploadTime = 0;
 uint32_t lastAlarmTrigger = 0;
+uint32_t lastUrgentUpload = 0;
 int peakScoreInWindow = 0;
 bool soundDetectedInWindow = false;
 
@@ -136,17 +138,42 @@ void loop() {
 
   int currentScore = maximum - minimum;
 
-  // Track the highest peak score for the cloud update
+  // Track the highest peak score
   if (currentScore > peakScoreInWindow) {
     peakScoreInWindow = currentScore;
   }
 
-  // 2. Instant sound detection trigger: Red light & Buzzer immediately turn ON
+  // 2. Sound Detection: Instant trigger
   if (currentScore >= NOISE_THRESHOLD) {
     lastAlarmTrigger = millis();
     soundDetectedInWindow = true;
     Serial.printf("[SOUND DETECTED!] Score: %d >= Threshold: %d -> RED LIGHT & BEEP!\n",
                   currentScore, NOISE_THRESHOLD);
+
+    // INSTANT PRIORITY UPLOAD: Do not wait for routine 2-second timer; push loud event immediately!
+    if (millis() - lastUrgentUpload >= 1200) {
+      lastUrgentUpload = millis();
+      lastUploadTime = millis();
+
+      Reading urgentReading{};
+      urgentReading.score = currentScore;
+      urgentReading.noisy = true;
+      urgentReading.sampledAt = millis();
+      makeEventId(urgentReading.eventId);
+
+      Serial.printf(">>> INSTANT CLOUD SEND: Loud Reading (Score: %d) sent now!\n", currentScore);
+
+      if (readings) {
+        if (xQueueSend(readings, &urgentReading, 0) != pdTRUE) {
+          Reading discarded;
+          xQueueReceive(readings, &discarded, 0);
+          xQueueSend(readings, &urgentReading, 0);
+        }
+      }
+
+      peakScoreInWindow = 0;
+      soundDetectedInWindow = false;
+    }
   }
 
   // 3. Alarm active state: remains active for ALARM_HOLD_MS after noise
@@ -161,13 +188,13 @@ void loop() {
     digitalWrite(BUZZER_PIN, BUZZER_ACTIVE_HIGH ? LOW : HIGH); // SILENT when quiet
   }
 
-  // 5. Periodic cloud reporting every SAMPLE_INTERVAL_MS (2 seconds)
+  // 5. Routine heartbeat cloud reporting (every 2 seconds during quiet periods)
   if (millis() - lastUploadTime >= SAMPLE_INTERVAL_MS) {
     lastUploadTime = millis();
 
     Reading reading{};
     reading.score = peakScoreInWindow;
-    reading.noisy = soundDetectedInWindow;
+    reading.noisy = soundDetectedInWindow || isAlarm;
     reading.sampledAt = millis();
     makeEventId(reading.eventId);
 
